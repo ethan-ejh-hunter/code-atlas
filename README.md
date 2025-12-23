@@ -8,7 +8,7 @@ Keep in mind, I did have AI write most of this. Some of the tools it uses were o
 
 ### Prerequisites
 *   Python 3
-*   Pip dependencies: `flask`, `markdown`, `pygments`
+*   Pip dependencies: `flask`, `markdown`, `pygments`, `deep-translator`
 
 ### Directory Structure
 CodeAtlas expects the target source code to be located in a directory named `source-code` within the project root.
