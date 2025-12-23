@@ -541,45 +541,113 @@ def add_annotation():
 @app.route('/api/file_annotations')
 def api_file_annotations():
     req_path = request.args.get('path', '')
+    print(f"DEBUG: api_file_annotations called with path='{req_path}'")
     
-    # Path resolution (reused from view_file logic roughly)
-    abs_path = os.path.abspath(req_path)
-    if not os.path.exists(abs_path):
-        # Try relative to source-code
-        alt_path = os.path.join("source-code", req_path)
-        if os.path.exists(os.path.abspath(alt_path)):
-            abs_path = os.path.abspath(alt_path)
-    
-    if not os.path.exists(abs_path):
-        return jsonify({"error": "File not found"}), 404
-
-    # Get DB ID
     conn = get_db()
-    # Ensure relative path matches what's in DB (usually relative to source-code root or workspace?)
-    # DB stores 'path' relative to where 'scan' was run (usually root).
-    # If abs_path starts with SOURCE_ROOT, make it relative
-    if abs_path.startswith(SOURCE_ROOT):
-        db_path = os.path.relpath(abs_path, SOURCE_ROOT)
-    else:
-        # Fallback
-        db_path = req_path
-
-    file_rec = conn.execute("SELECT id FROM files WHERE path = ?", (db_path,)).fetchone()
     
+    # Strategy 1: Exact Match (assuming req_path is relative to scan root)
+    file_rec = conn.execute("SELECT id, path FROM files WHERE path = ?", (req_path,)).fetchone()
+    
+    # Strategy 2: If req_path is absolute or has different root, try to resolve
+    if not file_rec:
+        # Try to find a file in DB that ENDS with req_path
+        # Use LIKE with suffix. Note: this might be slow or ambiguous but useful for sub-folder opens.
+        # Normalize req_path separators
+        search_path = req_path.replace('\\', '/')
+        
+        print(f"DEBUG: Exact match failed. Searching for suffix '%{search_path}'")
+        
+        # We want to find a file where path LIKE '%<search_path>'
+        cur = conn.execute("SELECT id, path FROM files WHERE path LIKE ?", (f"%{search_path}",))
+        matches = cur.fetchall()
+        
+        if len(matches) == 1:
+            file_rec = matches[0]
+            print(f"DEBUG: Found single suffix match: {file_rec['path']}")
+        elif len(matches) > 1:
+            # Ambiguous. Try to pick the shortest one? Or one that matches mostly?
+            print(f"DEBUG: Found {len(matches)} matches. Picking first.")
+            file_rec = matches[0]
+        else:
+             print("DEBUG: No matches found.")
+
     global_md = ""
     lines_dict = {}
+    db_path = ""
     
     if file_rec:
+        db_path = file_rec['path']
         cur = conn.execute("SELECT content FROM annotations WHERE file_id = ? AND line_number = 0 ORDER BY created_at DESC LIMIT 1", (file_rec['id'],))
         row = cur.fetchone()
         if row:
             global_md, lines_dict = parse_file_annotations_raw(row['content'])
+    else:
+        # 404 if not found? Or just return empty?
+        # User saw 404 in logs, so let's stick to 404 if truly not found to help debug
+        return jsonify({"error": "File not found in DB"}), 404
 
     return jsonify({
         "path": db_path,
         "global_annotations": global_md,
         "line_annotations": lines_dict
     })
+
+@app.route('/api/annotate', methods=['POST'])
+def add_annotation():
+    data = request.json
+    print(f"DEBUG: add_annotation called with data={data}")
+    
+    path = data.get('file_path')
+    line = int(data.get('line', 0))
+    content = data.get('content', '')
+    kind = data.get('type', 'manual')
+    
+    conn = get_db()
+    
+    # Resolve path (Same logic as above, essential!)
+    file_rec = conn.execute("SELECT id FROM files WHERE path = ?", (path,)).fetchone()
+    
+    if not file_rec:
+        search_path = path.replace('\\', '/')
+        print(f"DEBUG: Annotate path exact match failed. Searching suffix '%{search_path}'")
+        cur = conn.execute("SELECT id FROM files WHERE path LIKE ?", (f"%{search_path}",))
+        matches = cur.fetchall()
+        if len(matches) > 0:
+             file_rec = matches[0]
+    
+    if not file_rec:
+        print("DEBUG: File not indexed for annotation.")
+        return jsonify({"error": "File not indexed"}), 404
+        
+    file_id = file_rec['id']
+    
+    # Fetch current master blob
+    cur = conn.execute("SELECT content FROM annotations WHERE file_id = ? AND line_number = 0 ORDER BY created_at DESC LIMIT 1", (file_id,))
+    row = cur.fetchone()
+    current_blob = row['content'] if row else ""
+    
+    # Parse existing
+    global_raw, lines_raw = parse_file_annotations_raw(current_blob)
+    
+    # Update logic
+    if line == 0:
+        new_blob = content
+    else:
+        if content.strip() == "":
+            if line in lines_raw: del lines_raw[line]
+        else:
+            lines_raw[line] = content
+        new_blob = reconstruct_markdown(global_raw, lines_raw)
+    
+    conn.execute(
+        "INSERT INTO annotations (file_id, line_number, content, type) VALUES (?, ?, ?, ?)",
+        (file_id, 0, new_blob, kind)
+    )
+    conn.commit()
+    conn.close()
+    
+    return jsonify({"status": "success"})
+
 
 # CLI command to scan
 if __name__ == '__main__':
