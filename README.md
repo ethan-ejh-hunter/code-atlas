@@ -11,10 +11,8 @@ Keep in mind, I did have AI write most of this. Some of the tools it uses were o
 *   Pip dependencies: `flask`, `markdown`, `pygments`, `deep-translator`
 
 ### Directory Structure
-CodeAtlas expects the target source code to be located in a directory named `source-code` within the project root.
 
-1.  Create a directory named `source-code` in the root of the project.
-2.  Place the source code you wish to analyze into this `source-code` directory.
+The source code should be located in the `source-code` directory within the project root.
 
 Example structure:
 /project_root
@@ -25,7 +23,8 @@ Example structure:
       ...
 
 ## Database Initialization
-CodeAtlas uses a SQLite database (`code_atlas.db`) to store file indices and annotations.
+
+The database is initialized when you run the `scan` command. It uses a SQLite database (`code_atlas.db`) to store file indices and annotations.
 
 To initialize the database and scan the `source-code` directory for files, run the following command from the project root:
 
@@ -49,9 +48,9 @@ If you want to change the port it runs on (for instance, to have seperate server
 Navigate through the directory structure of your source code. The interface mirrors the file system within `source-code`.
 
 ### Source Viewer & Annotation
-*   **Syntax Highlighting:** Supports various languages via Pygments.
-*   **Global Annotations:** Add high-level markdown notes to any file.
-*   **Line Annotations:** Add comments to specific lines of code.
+*   **Syntax Highlighting:** Supports various languages via Pygments. I've only tested C/C++, but I assume it works with Python at least. 
+*   **Global Annotations:** Add high-level markdown notes to any file. 
+*   **Line Annotations:** Add comments to specific lines of code. You can do this by clicking on the line number, or clicking in the annotation section. 
 
 ### Tools
 CodeAtlas integrates several tools to assist with analysis:
