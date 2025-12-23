@@ -59,7 +59,7 @@ CodeAtlas integrates several tools to assist with analysis:
 *   **File Info:** Run the system `file` command to identify file types.
 *   **Auto Translate:** Automated translation of Japanese comments. Uses deep_translator internally. It can either group lines into sentences (good for READMEs), or translate each line individually. 
 *   **Format Code:** Run `clang-format` on C/C++ files.
-*   **Open in VS Code:** Open the current file's directory in VS Code.
+*   **Open in VS Code:** Open the current file's directory in VS Code. I found this especially useful for for seeing where functions/variables are located, since I really didn't want to implement it in this web interface when VS-code already has it built in. 
 
 ## Architecture
 *   **Frontend:** HTML/CSS/JS (served via Flask templates).
