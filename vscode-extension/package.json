@@ -23,6 +23,29 @@
                     "description": "URL of the CodeAtlas server"
                 }
             }
+        },
+        "commands": [
+            {
+                "command": "codeAtlas.saveComment",
+                "title": "Save CodeAtlas Note",
+                "icon": "$(save)"
+            }
+        ],
+        "menus": {
+            "comments/commentThread/context": [
+                {
+                    "command": "codeAtlas.saveComment",
+                    "group": "inline",
+                    "when": "commentThreadIsEmpty"
+                }
+            ],
+            "comments/comment/title": [
+                {
+                    "command": "codeAtlas.saveComment",
+                    "group": "navigation",
+                    "when": "commentController == codeAtlas"
+                }
+            ]
         }
     },
     "scripts": {
