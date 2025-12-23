@@ -141,9 +141,28 @@ def parse_and_process(file_path, strategy='sentence'):
                 else: end_idx += 2
                 
                 text = content[start_idx+2:end_idx-2].strip()
-                if contains_japanese(text):
-                    # For block comments, we might want the start line
-                    detected_items.append((get_line_number(content, start_idx), text))
+                
+                # Check strategy for block comments
+                if strategy == 'line':
+                    # Split into lines
+                    # We need to render the original lines to match line numbers
+                    raw_block = content[start_idx+2:end_idx-2]
+                    block_lines = raw_block.splitlines()
+                    current_line_num = get_line_number(content, start_idx)
+                    
+                    for bl in block_lines:
+                        # empty lines might increment line count
+                        # Actually get_line_number is expensive to call repeatedly?
+                        # No, we can just increment.
+                        # Wait, get_line_number counts \n.
+                        # We are iterating splitlines.
+                        if contains_japanese(bl):
+                            detected_items.append((current_line_num, bl.strip()))
+                        current_line_num += 1
+                else:
+                    if contains_japanese(text):
+                        detected_items.append((get_line_number(content, start_idx), text))
+                
                 i = end_idx
                 
             else:
