@@ -43,6 +43,9 @@ export function activate(context: vscode.ExtensionContext) {
 
         const thread = reply.thread;
         const text = reply.text;
+
+        if (!thread.range) return; // Should not happen based on our creation logic
+
         const line = thread.range.start.line;
         const document = vscode.workspace.textDocuments.find(d => d.uri.toString() === thread.uri.toString());
 
@@ -139,7 +142,7 @@ async function updateAnnotations(document: vscode.TextDocument) {
         for (const key of keys) {
             if (key.startsWith(uriStr + '#')) {
                 const thread = threadMap.get(key);
-                if (thread) {
+                if (thread && thread.range) {
                     const line = thread.range.start.line;
                     if (!activeLines.has(line)) {
                         // If it has no comments, dispose it (unless user is typing?)

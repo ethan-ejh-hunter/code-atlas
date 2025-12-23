@@ -494,18 +494,38 @@ def api_file_annotations():
     # Strategy 1: Exact Match (assuming req_path is relative to scan root)
     file_rec = conn.execute("SELECT id, path FROM files WHERE path = ?", (req_path,)).fetchone()
     
-    # Strategy 2: If req_path is absolute or has different root, try to resolve
+    # Strategy 2: Filename Match (Optimized with Index)
     if not file_rec:
-        # Try to find a file in DB that ENDS with req_path
-        # Use LIKE with suffix. Note: this might be slow or ambiguous but useful for sub-folder opens.
-        # Normalize req_path separators
-        search_path = req_path.replace('\\', '/')
+        # Extract filename (basename) from req_path
+        # Use substring after last / (or full string if no /)
+        # Note: req_path might use \ on Windows client, but we normalized it in client??
+        # We should handle separators robustly here just in case.
+        import os
+        base_name = req_path.replace('\\', '/').split('/')[-1]
         
-        print(f"DEBUG: Exact match failed. Searching for suffix '%{search_path}'")
+        # print(f"DEBUG: Exact match failed. Searching for filename='{base_name}'")
         
-        # We want to find a file where path LIKE '%<search_path>'
-        cur = conn.execute("SELECT id, path FROM files WHERE path LIKE ?", (f"%{search_path}",))
-        matches = cur.fetchall()
+        # Query index
+        cur = conn.execute("SELECT id, path FROM files WHERE filename = ?", (base_name,))
+        candidates = cur.fetchall()
+        
+        # Filter in Python (fast since usually few files have same name)
+        # We want path ending with req_path (normalized)
+        search_suffix = req_path.replace('\\', '/')
+        
+        matches = []
+        for c in candidates:
+             # Normalize DB path for comparison
+             result_path = c['path'].replace('\\', '/')
+             if result_path.endswith(search_suffix):
+                 matches.append(c)
+        
+        if len(matches) == 1:
+            file_rec = matches[0]
+            # print(f"DEBUG: Found single suffix match via index: {file_rec['path']}")
+        elif len(matches) > 1:
+            # print(f"DEBUG: Found {len(matches)} matches via index. Picking first.")
+            file_rec = matches[0]
         
         if len(matches) == 1:
             file_rec = matches[0]
@@ -554,10 +574,18 @@ def add_annotation():
     file_rec = conn.execute("SELECT id FROM files WHERE path = ?", (path,)).fetchone()
     
     if not file_rec:
-        search_path = path.replace('\\', '/')
-        print(f"DEBUG: Annotate path exact match failed. Searching suffix '%{search_path}'")
-        cur = conn.execute("SELECT id FROM files WHERE path LIKE ?", (f"%{search_path}",))
-        matches = cur.fetchall()
+        # Optimized lookup
+        base_name = path.replace('\\', '/').split('/')[-1]
+        search_suffix = path.replace('\\', '/')
+        
+        cur = conn.execute("SELECT id, path FROM files WHERE filename = ?", (base_name,))
+        candidates = cur.fetchall()
+        
+        matches = []
+        for c in candidates:
+             if c['path'].replace('\\', '/').endswith(search_suffix):
+                 matches.append(c)
+
         if len(matches) > 0:
              file_rec = matches[0]
     
