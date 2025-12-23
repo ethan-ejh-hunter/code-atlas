@@ -482,61 +482,7 @@ def run_tool():
 
     return jsonify({"status": "success"})
 
-@app.route('/api/annotate', methods=['POST'])
-def add_annotation():
-    data = request.json
-    path = data.get('file_path')
-    line = int(data.get('line', 0)) # Default to 0 if missing
-    content = data.get('content', '')
-    kind = data.get('type', 'manual')
-    
-    conn = get_db()
-    file_rec = conn.execute("SELECT id FROM files WHERE path = ?", (path,)).fetchone()
-    if not file_rec:
-        return jsonify({"error": "File not indexed"}), 404
-        
-    file_id = file_rec['id']
-    
-    # Fetch current master blob
-    cur = conn.execute("SELECT content FROM annotations WHERE file_id = ? AND line_number = 0 ORDER BY created_at DESC LIMIT 1", (file_id,))
-    row = cur.fetchone()
-    current_blob = row['content'] if row else ""
-    
-    # Parse existing
-    global_raw, lines_raw = parse_file_annotations_raw(current_blob)
-    
-    # Update logic
-    if line == 0:
-        # Updating global note? Or do we assume this endpoint is ONLY for line updates?
-        # If line==0, we might be receiving the FULL blob from the master editor.
-        # Let's check a flag or assume if it looks like a blob update.
-        # For now, if line is 0, we assume content IS the full blob (legacy behavior support)
-        # BUT if the user wants to edit just the global part... 
-        # Let's keep it simple: if line 0, user edited the master text area, so content IS the full blob.
-        new_blob = content
-    else:
-        # Line specific update
-        if content.strip() == "":
-            # Delete annotation if empty
-            if line in lines_raw:
-                del lines_raw[line]
-        else:
-            lines_raw[line] = content
-            
-        new_blob = reconstruct_markdown(global_raw, lines_raw)
-        
-    # Validating that we don't just append forever, we replace the master.
-    # Actually our DB schema allows history (created_at). So inserting a new one is fine, 
-    # effectively "overwriting" the current head.
-    
-    conn.execute(
-        "INSERT INTO annotations (file_id, line_number, content, type) VALUES (?, ?, ?, ?)",
-        (file_id, 0, new_blob, kind)
-    )
-    conn.commit()
-    conn.close()
-    
-    return jsonify({"status": "success"})
+
 
 @app.route('/api/file_annotations')
 def api_file_annotations():
