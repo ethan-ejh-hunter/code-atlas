@@ -9,6 +9,7 @@ Keep in mind, I did have AI write most of this. Some of the tools it uses were o
 ### Prerequisites
 *   Python 3
 *   Pip dependencies: `flask`, `markdown`, `pygments`, `deep-translator`
+*   The "formatter" uses clang, by default. Make sure you have that. 
 
 ### Directory Structure
 
