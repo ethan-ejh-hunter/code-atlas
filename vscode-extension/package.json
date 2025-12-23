@@ -1,6 +1,7 @@
 {
     "name": "code-atlas-annotations",
     "displayName": "CodeAtlas Annotations",
+    "publisher": "codeatlas",
     "description": "View and edit CodeAtlas annotations in VS Code",
     "version": "0.0.1",
     "engines": {
