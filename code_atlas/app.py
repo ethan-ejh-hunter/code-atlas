@@ -538,6 +538,49 @@ def add_annotation():
     
     return jsonify({"status": "success"})
 
+@app.route('/api/file_annotations')
+def api_file_annotations():
+    req_path = request.args.get('path', '')
+    
+    # Path resolution (reused from view_file logic roughly)
+    abs_path = os.path.abspath(req_path)
+    if not os.path.exists(abs_path):
+        # Try relative to source-code
+        alt_path = os.path.join("source-code", req_path)
+        if os.path.exists(os.path.abspath(alt_path)):
+            abs_path = os.path.abspath(alt_path)
+    
+    if not os.path.exists(abs_path):
+        return jsonify({"error": "File not found"}), 404
+
+    # Get DB ID
+    conn = get_db()
+    # Ensure relative path matches what's in DB (usually relative to source-code root or workspace?)
+    # DB stores 'path' relative to where 'scan' was run (usually root).
+    # If abs_path starts with SOURCE_ROOT, make it relative
+    if abs_path.startswith(SOURCE_ROOT):
+        db_path = os.path.relpath(abs_path, SOURCE_ROOT)
+    else:
+        # Fallback
+        db_path = req_path
+
+    file_rec = conn.execute("SELECT id FROM files WHERE path = ?", (db_path,)).fetchone()
+    
+    global_md = ""
+    lines_dict = {}
+    
+    if file_rec:
+        cur = conn.execute("SELECT content FROM annotations WHERE file_id = ? AND line_number = 0 ORDER BY created_at DESC LIMIT 1", (file_rec['id'],))
+        row = cur.fetchone()
+        if row:
+            global_md, lines_dict = parse_file_annotations_raw(row['content'])
+
+    return jsonify({
+        "path": db_path,
+        "global_annotations": global_md,
+        "line_annotations": lines_dict
+    })
+
 # CLI command to scan
 if __name__ == '__main__':
     import argparse
