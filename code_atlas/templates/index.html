@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>CodeAtlas - Knowledge Base</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f5f5f5;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: #333;
+            color: white;
+            padding: 15px 20px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.2rem;
+            font-weight: normal;
+        }
+
+        .main-container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        #sidebar {
+            width: 350px;
+            background: white;
+            border-right: 1px solid #ddd;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        #welcome-panel {
+            flex: 1;
+            padding: 40px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #888;
+        }
+
+        /* Tree Styles */
+        ul.tree {
+            list-style: none;
+            padding-left: 0;
+            margin: 0;
+        }
+
+        ul.tree ul {
+            padding-left: 20px;
+            display: none;
+        }
+
+        ul.tree li {
+            margin: 2px 0;
+        }
+
+        .tree-item {
+            display: flex;
+            align-items: center;
+            padding: 4px 6px;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+
+        .tree-item:hover {
+            background: #f0f8ff;
+        }
+
+        .tree-item .icon {
+            margin-right: 6px;
+            width: 16px;
+            text-align: center;
+        }
+
+        .tree-item .name {
+            font-size: 0.95rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .is-dir>.tree-item {
+            font-weight: 500;
+            color: #333;
+        }
+
+        .is-file>.tree-item {
+            color: #555;
+        }
+
+        .expanded>ul {
+            display: block;
+        }
+
+        /* Specificity fix: ensure expanded shows children */
+        li.expanded>ul {
+            display: block !important;
+        }
+
+        .arrow {
+            display: inline-block;
+            width: 10px;
+            font-size: 0.7em;
+            transition: transform 0.2s;
+            color: #999;
+        }
+
+        .expanded>.tree-item .arrow {
+            transform: rotate(90deg);
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>CodeAtlas</h1>
+    </header>
+
+    <div class="main-container">
+        <div id="sidebar">
+            <ul id="root-tree" class="tree"></ul>
+        </div>
+        <div id="welcome-panel">
+            <div>Select a file from the sidebar to view.</div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const root = document.getElementById('root-tree');
+            await loadNode('', root);
+
+            // Handle deep expansion if parameter exists
+            const urlParams = new URLSearchParams(window.location.search);
+            const expandPath = urlParams.get('expand');
+            if (expandPath) {
+                console.log("Deep expanding to:", expandPath);
+                await deepExpand(expandPath);
+            }
+        });
+
+        async function deepExpand(targetPath) {
+            const parts = targetPath.split('/');
+            let currentPath = '';
+            let currentContainer = document.getElementById('root-tree');
+
+            for (let i = 0; i < parts.length; i++) {
+                currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i];
+
+                // Find the LI that matches this part of the path
+                const items = currentContainer.querySelectorAll(':scope > li');
+                let targetLi = null;
+                for (const li of items) {
+                    const nameSpan = li.querySelector('.name');
+                    if (nameSpan && nameSpan.textContent === parts[i]) {
+                        targetLi = li;
+                        break;
+                    }
+                }
+
+                if (targetLi) {
+                    if (targetLi.classList.contains('is-dir')) {
+                        // Expand it if not expanded
+                        if (!targetLi.classList.contains('expanded')) {
+                            await toggleDir(targetLi, currentPath);
+                        }
+                        currentContainer = targetLi.querySelector('ul');
+                    }
+
+                    // On the last part, scroll it into view and highlight
+                    if (i === parts.length - 1) {
+                        targetLi.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        targetLi.querySelector('.tree-item').style.background = '#eef6ff';
+                        targetLi.querySelector('.tree-item').style.boxShadow = 'inset 0 0 0 1px #0066cc';
+
+                        // Load annotations context
+                        if (targetLi.classList.contains('is-dir')) {
+                            loadFolderView(currentPath);
+                        } else {
+                            // If it's a file, load the parent folder annotations
+                            const parentPath = parts.slice(0, -1).join('/');
+                            loadFolderView(parentPath);
+                        }
+                    }
+                } else {
+                    console.warn("Could not find tree node for:", currentPath);
+                    break;
+                }
+            }
+        }
+
+        async function loadNode(path, container) {
+            try {
+                const encoded = encodeURIComponent(path);
+                const res = await fetch(`/api/tree?path=${encoded}`);
+                const data = await res.json();
+
+                container.innerHTML = '';
+
+                if (!data || data.length === 0) {
+                    if (container.id === 'root-tree') {
+                        container.innerHTML = '<li style="padding:10px;">No files found.</li>';
+                    } else {
+                        container.innerHTML = '<li style="padding-left:24px; color:#888; font-style:italic;">(Empty)</li>';
+                    }
+                    return;
+                }
+
+                for (const item of data) {
+                    const li = document.createElement('li');
+                    li.className = item.type === 'dir' ? 'is-dir' : 'is-file';
+
+                    const div = document.createElement('div');
+                    div.className = 'tree-item';
+
+                    let icon = '📄';
+                    let arrowHtml = '';
+                    if (item.type === 'dir') {
+                        icon = '📁';
+                        arrowHtml = '<span class="arrow">▶</span> ';
+                    }
+
+                    div.innerHTML = `${arrowHtml}<span class="icon">${icon}</span><span class="name">${item.name}</span>`;
+
+                    div.onclick = (e) => {
+                        e.stopPropagation();
+                        if (item.type === 'dir') {
+                            // Expand/Collapse AND View
+                            toggleDir(li, item.path);
+                            loadFolderView(item.path);
+                        } else {
+                            window.location.href = `/view/${item.path}`;
+                        }
+                    };
+
+                    li.appendChild(div);
+
+                    if (item.type === 'dir') {
+                        const ul = document.createElement('ul');
+                        ul.className = 'tree';
+                        li.appendChild(ul);
+                    }
+
+                    container.appendChild(li);
+                }
+            } catch (e) {
+                console.error(e);
+                container.innerHTML = '<li>Error loading.</li>';
+            }
+        }
+
+        async function toggleDir(li, path) {
+            const ul = li.querySelector('ul');
+            if (li.classList.contains('expanded')) {
+                li.classList.remove('expanded');
+            } else {
+                li.classList.add('expanded');
+                if (ul.children.length === 0) {
+                    ul.innerHTML = '<li>Loading...</li>';
+                    await loadNode(path, ul);
+                }
+            }
+        }
+
+        let currentFolderPath = null;
+        let currentNoteRaw = "";
+
+        async function loadFolderView(path) {
+            const panel = document.getElementById('welcome-panel');
+            panel.innerHTML = '<div style="padding:20px;">Loading folder details...</div>';
+
+            try {
+                const res = await fetch(`/api/folder_details?path=${encodeURIComponent(path)}`);
+                if (!res.ok) throw new Error("Failed to load");
+                const data = await res.json();
+
+                currentFolderPath = data.path;
+                currentNoteRaw = data.notes_raw || "";
+
+                const notesHtml = data.notes_html || '<p style="color:#999;font-style:italic;">No notes yet. Click Edit to add one.</p>';
+
+                let cardsHtml = '';
+                for (const kid of data.children) {
+                    const icon = kid.type === 'dir' ? '📁' : '📄';
+                    const style = kid.type === 'dir' ? 'color:#fec800;' : 'color:#999;';
+                    const href = kid.type === 'dir' ? `javascript:loadFolderView('${kid.path}')` : `/view/${kid.path}`;
+
+                    cardsHtml += `
+                    <div style="border:1px solid #ddd; padding:15px; border-radius:6px; display:flex; align-items:center; background:white; font-size:1.1em;">
+                        <span style="font-size:1.4em; margin-right:12px; ${style}">${icon}</span>
+                        <a href="${href}" style="text-decoration:none; color:#333; font-weight:500;">${kid.name}</a>
+                    </div>
+                    `;
+                }
+
+                panel.innerHTML = `
+                    <div style="padding:40px; width:100%; box-sizing:border-box; overflow-y:auto; height:100%;">
+                        <div style="margin-bottom:20px; color:#666;">
+                            File System / ${data.path}
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                            <h1 style="margin:0;">📁 ${data.name}</h1>
+                            <div>
+                                <button onclick="runTool('open_vscode')" style="padding:8px 16px; cursor:pointer; margin-right:10px; background:#0066cc; color:white; border:none; border-radius:4px;">Open VS Code</button>
+                                <button onclick="enterEditMode()" style="padding:8px 16px; cursor:pointer;">Edit Notes</button>
+                            </div>
+                        </div>
+                        
+                        <div id="notes-display" style="background:#fffec8; padding:20px; border-left:5px solid #fec800; margin-bottom:40px;">
+                            ${notesHtml}
+                        </div>
+                        
+                        <div id="notes-editor" style="display:none; margin-bottom:40px;">
+                            <textarea id="editor-textarea" style="width:100%; height:150px; padding:10px; font-family:monospace;">${currentNoteRaw}</textarea>
+                            <div style="margin-top:10px;">
+                                <button onclick="saveNote()" style="background:#0066cc; color:white; border:none; padding:8px 16px; cursor:pointer; margin-right:10px;">Save Annotation</button>
+                                <button onclick="cancelEdit()" style="background:#ccc; border:none; padding:8px 16px; cursor:pointer;">Cancel</button>
+                            </div>
+                        </div>
+                        
+                        <h3>Contents</h3>
+                        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:15px;">
+                            ${cardsHtml}
+                        </div>
+                    </div>
+                `;
+
+            } catch (e) {
+                panel.innerHTML = `<div style="padding:20px; color:red;">Error: ${e}</div>`;
+            }
+        }
+
+        function enterEditMode() {
+            document.getElementById('notes-display').style.display = 'none';
+            document.getElementById('notes-editor').style.display = 'block';
+        }
+
+        function cancelEdit() {
+            document.getElementById('notes-display').style.display = 'block';
+            document.getElementById('notes-editor').style.display = 'none';
+            document.getElementById('editor-textarea').value = currentNoteRaw;
+        }
+
+        async function saveNote() {
+            const text = document.getElementById('editor-textarea').value;
+            try {
+                await fetch('/api/annotate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        file_path: currentFolderPath,
+                        line: 0,
+                        content: text,
+                        type: 'manual'
+                    })
+                });
+                loadFolderView(currentFolderPath);
+            } catch (e) {
+                alert("Failed to save: " + e);
+            }
+        }
+
+        async function runTool(toolKey) {
+            try {
+                // Show small toast or something? For now just alert or log
+                console.log("Running tool:", toolKey);
+                const res = await fetch('/api/run_tool', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        tool: toolKey,
+                        file_path: currentFolderPath
+                    })
+                });
+                const data = await res.json();
+                if (data.error) {
+                    alert("Error: " + data.error);
+                } else {
+                    // Success feedback
+                    const btn = document.querySelector(`button[onclick="runTool('${toolKey}')"]`);
+                    const originalText = btn.textContent;
+                    btn.textContent = "Done!";
+                    setTimeout(() => btn.textContent = originalText, 2000);
+                }
+            } catch (e) {
+                alert("Failed: " + e);
+            }
+        }
+    </script>
+</body>
+
+</html>

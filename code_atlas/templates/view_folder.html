@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>{{ name }} - CodeAtlas</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            position: relative;
+        }
+
+        .header-tools {
+            position: absolute;
+            top: 40px;
+            right: 40px;
+        }
+
+        .header-tools button {
+            background: #0066cc;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        .header-tools button:hover {
+            background: #0055aa;
+        }
+
+        h1 {
+            margin-top: 0;
+            color: #333;
+            display: flex;
+            align-items: center;
+        }
+
+        h1 span.icon {
+            margin-right: 10px;
+            opacity: 0.5;
+        }
+
+        .annotation-box {
+            background: #fffec8;
+            padding: 15px;
+            border-left: 5px solid #fec800;
+            margin-bottom: 30px;
+        }
+
+        .add-note {
+            margin-top: 10px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 80px;
+            margin-bottom: 5px;
+        }
+
+        ul.file-list {
+            list-style: none;
+            padding: 0;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 15px;
+        }
+
+        li.file-card {
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            background: white;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+
+        li.file-card:hover {
+            background: #fff;
+            border-color: #999;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        li.file-card a {
+            text-decoration: none;
+            color: #333;
+            display: block;
+            flex: 1;
+            text-overflow: ellipsis;
+            overflow: hidden;
+            white-space: nowrap;
+            font-size: 1.1em;
+            font-weight: 500;
+        }
+
+        .icon-dir {
+            color: #fec800;
+            margin-right: 12px;
+            font-size: 1.4em;
+        }
+
+        .icon-file {
+            color: #888;
+            margin-right: 12px;
+            font-size: 1.4em;
+        }
+
+        .header-links {
+            margin-bottom: 20px;
+            color: #666;
+        }
+
+        .header-links a {
+            color: #666;
+            text-decoration: none;
+        }
+
+        .header-links a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <div class="header-links">
+            <a href="/">Index</a> / {{ file_path }}
+        </div>
+
+        {% if tools %}
+        <div class="header-tools">
+            {% for key, tool in tools.items() %}
+            <button onclick="runTool('{{ key }}')">{{ tool.name }}</button>
+            {% endfor %}
+            <div id="tool-status" style="margin-top:5px; font-size:0.8em; color:#0066cc;"></div>
+        </div>
+        {% endif %}
+
+        <h1><span class="icon">📂</span> {{ name }}</h1>
+
+        <div class="annotation-box">
+            <h3>Folder Notes</h3>
+            <div id="notes-list">
+                {% if annotations %}
+                {% for note in annotations %}
+                <p>{{ note.content }}</p>
+                {% endfor %}
+                {% else %}
+                <p style="color:#888; font-style:italic;">No notes for this folder yet.</p>
+                {% endif %}
+            </div>
+
+            <div class="add-note">
+                <textarea id="note-input" placeholder="Add a note about this module..."></textarea>
+                <button onclick="addNote()">Add Note</button>
+            </div>
+        </div>
+
+        <h3>Contents</h3>
+        <ul class="file-list">
+            {% for item in children %}
+            <li class="file-card">
+                {% if item.type == 'dir' %}
+                <span class="icon-dir">📂</span>
+                <a href="/view/{{ item.path }}">{{ item.name }}</a>
+                {% else %}
+                <span class="icon-file">📄</span>
+                <a href="/view/{{ item.path }}">{{ item.name }}</a>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <script>
+        function addNote() {
+            const text = document.getElementById('note-input').value;
+            if (!text) return;
+
+            fetch('/api/annotate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    file_path: "{{ file_path }}",
+                    line: 0,
+                    content: text,
+                    type: 'manual'
+                })
+            }).then(() => {
+                location.reload();
+            });
+        }
+
+        function runTool(toolKey) {
+            const statusDiv = document.getElementById('tool-status');
+            statusDiv.textContent = 'Running...';
+
+            fetch('/api/run_tool', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    tool: toolKey,
+                    file_path: "{{ file_path }}"
+                })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) {
+                        alert("Error: " + data.error);
+                        statusDiv.textContent = '';
+                    } else {
+                        statusDiv.textContent = 'Done!';
+                        setTimeout(() => statusDiv.textContent = '', 2000);
+                    }
+                })
+                .catch(e => {
+                    alert("Failed: " + e);
+                    statusDiv.textContent = '';
+                });
+        }
+    </script>
+
+</body>
+
+</html>

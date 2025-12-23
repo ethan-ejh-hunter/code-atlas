@@ -1,0 +1,18 @@
+# User requested
+source-code/*
+!source-code/.gitkeep
+documents/*
+!documents/.gitkeep
+translation_cache*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.db
+
+# OS
+.DS_Store
+Thumbs.db

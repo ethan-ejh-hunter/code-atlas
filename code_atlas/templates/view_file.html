@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>{{ file_path }} - CodeAtlas</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #sidebar {
+            width: 300px;
+            background: #eee;
+            border-right: 1px solid #ccc;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #main {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #fff;
+        }
+
+        .code-container {
+            vertical-align: top;
+            text-align: left;
+            flex: 1;
+            background: #f8f8f8;
+            border: 1px solid #ddd;
+            overflow: auto;
+        }
+
+        .code-table {
+            border-collapse: collapse;
+            width: 100%;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            /* Increased for better legibility during wrapping */
+            table-layout: fixed;
+        }
+
+        .code-row td {
+            vertical-align: top;
+            padding: 0;
+            margin: 0;
+        }
+
+        .line-number {
+            background: #f0f0f0;
+            color: #999;
+            text-align: right;
+            padding-right: 10px;
+            padding-top: 2px;
+            user-select: none;
+            border-right: 1px solid #ddd;
+            width: 50px;
+            position: relative;
+        }
+
+        .line-link {
+            display: none;
+            position: absolute;
+            left: 5px;
+            top: 2px;
+            color: #0066cc;
+            text-decoration: none;
+            cursor: pointer;
+            font-size: 10px;
+        }
+
+        .line-number:hover .line-link {
+            display: block;
+        }
+
+        .info-target {
+            background-color: #fffec8 !important;
+            transition: background-color 2s ease-out;
+        }
+
+        .code-line {
+            vertical-align: top;
+            padding-left: 10px;
+            padding-top: 2px;
+        }
+
+        .code-text {
+            margin: 0;
+            padding: 0;
+            display: block;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            word-break: break-all;
+        }
+
+        /* Squash any margins from injected paragraph tags (common in markdown) */
+        .code-text p,
+        .comment-bubble p {
+            margin: 0 !important;
+            padding: 0 !important;
+            display: inline;
+        }
+
+        .code-row:hover {
+            background: #edf6ff;
+            cursor: pointer;
+        }
+
+        .tool-card {
+            background: white;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+
+        .tool-card h4 {
+            margin: 0 0 5px 0;
+        }
+
+        .tool-card button {
+            background: #0066cc;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 3px;
+            width: 100%;
+        }
+
+        .tool-card button:hover {
+            background: #0055aa;
+        }
+
+        #output-panel {
+            margin-top: 20px;
+            border-top: 2px solid #ccc;
+            padding-top: 10px;
+        }
+
+        #tool-output {
+            background: #222;
+            color: #0f0;
+            padding: 10px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .annotation-margin {
+            width: 350px;
+            padding: 2px 10px 0 10px;
+            /* Aligns with code-line padding */
+            vertical-align: top;
+            border-left: 1px dashed #ccc;
+        }
+
+        .comment-bubble {
+            background: #fffec8;
+            border: 1px solid #fec800;
+            padding: 2px 8px;
+            font-size: 12px;
+            line-height: 1.2;
+            color: #333;
+            border-radius: 4px;
+            margin: 0;
+            position: relative;
+            box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.05);
+            display: block;
+        }
+
+        .comment-bubble::before {
+            content: "";
+            position: absolute;
+            left: -11px;
+            top: 8px;
+            /* Points to the first line of the bubble */
+            width: 10px;
+            height: 1px;
+            background: #fec800;
+        }
+
+        .code-line.has-annotation .code-text {
+            text-decoration: underline;
+            text-decoration-color: #fec800;
+            text-decoration-thickness: 2px;
+            font-weight: bold;
+        }
+
+        #global-notes {
+            background: #fffec8;
+            padding: 20px;
+            border-left: 5px solid #fec800;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+
+        #editor-container {
+            display: none;
+            background: white;
+            border: 1px solid #ddd;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Pygments Syntax Highlighting Theme */
+            {
+                {
+                pygments_css | safe
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="sidebar">
+        <h3>Toolbelt</h3>
+        <div id="tools-list">
+            {% for key, tool in tools.items() %}
+            <div class="tool-card">
+                <h4>{{ tool.name }}</h4>
+                <p style="font-size:0.8em; color:#666;">{{ tool.description }}</p>
+                <button onclick="runTool('{{ key }}')">Run Tool</button>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div id="output-panel">
+            <h4>Tool Output</h4>
+            <div id="tool-output"></div>
+        </div>
+
+        <h3>Navigation</h3>
+        <p><a href="/?expand={{ file_path }}">Back to Index</a></p>
+
+        <h3>Annotations</h3>
+        <button id="edit-btn" onclick="toggleEditor()"
+            style="width:100%; padding:10px; cursor:pointer; background:#fec800; border:none; border-radius:4px; font-weight:bold;">Edit
+            Annotations</button>
+
+        <div id="annotations-summary" style="margin-top:20px;">
+            {% if not global_notes_html and not line_annotations %}
+            <p style="color:#888; font-style:italic;">No annotations yet.</p>
+            {% else %}
+            <p style="color:#666; font-size:0.9em;">
+                This file has active annotations. Scroll code to see inline notes.
+            </p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div id="main">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <h2 style="margin:0;">{{ file_path }}</h2>
+        </div>
+
+        <div id="editor-container">
+            <h3 style="margin-top:0;">Unified Annotation Editor</h3>
+
+            <div
+                style="background:#f9f9f9; padding:15px; border:1px solid #ddd; border-radius:4px; margin-bottom:15px; font-size:0.9em;">
+                <strong>Annotation Guide:</strong>
+                <ul style="margin:5px 0; padding-left:20px;">
+                    <li><strong>Global Notes:</strong> Write anything at the very top.</li>
+                    <li><strong>Line Separator:</strong> Add <code>@lines</code> on its own line to start line-level
+                        notes.</li>
+                    <li><strong>Line Notes:</strong> Use <code># [number]</code> at the start of a line to target a
+                        line.</li>
+                </ul>
+                <div
+                    style="background:#fff; padding:8px; border:1px solid #eee; font-family:monospace; margin-top:5px; white-space:pre;">
+                    Typical layout:
+                    This file handles XYZ.
+                    @lines
+                    # 10
+                    This is a note for line 10.</div>
+            </div>
+
+            <textarea id="master-editor"
+                style="width:100%; height:300px; padding:10px; font-family:monospace; border:1px solid #ccc; border-radius:4px;">{{ notes_raw }}</textarea>
+            <div style="margin-top:10px;">
+                <button onclick="saveAnnotations()"
+                    style="background:#0066cc; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; margin-right:8px;">Save
+                    Everything</button>
+                <button onclick="toggleEditor()"
+                    style="background:#ccc; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">Cancel</button>
+            </div>
+        </div>
+
+        {% if global_notes_html %}
+        <div id="global-notes">
+            {{ global_notes_html | safe }}
+        </div>
+        {% endif %}
+
+        <hr>
+
+        {% if is_binary %}
+        <div style="padding: 20px; background: #ffe; border: 1px solid #ee9;">
+            <strong>Binary File</strong><br>
+            This file contains binary data and cannot be displayed as text.<br>
+            Use the <strong>Toolbelt</strong> on the left to inspect it (e.g., Extract Shift-JIS).
+        </div>
+        {% else %}
+        <div class="code-container">
+            <table class="code-table">
+                <colgroup>
+                    <col style="width: 60px;">
+                    <col>
+                    <col style="width: 350px;">
+                </colgroup>
+                {% for html_line in highlighted_lines -%}
+                {% set lnum = loop.index -%}
+                <tr class="code-row" id="L{{ lnum }}" onclick="openLineEditor(event, {{ lnum }})">
+                    <td class="line-number" id="LN{{ lnum }}">
+                        <a href="#L{{ lnum }}" class="line-link"
+                            onclick="copyLink(event, {{ lnum }}); return false;">🔗</a>
+                        {{ lnum }}
+                    </td>
+                    <td class="code-line {% if lnum in line_annotations %}has-annotation{% endif %}">
+                        <div class="code-text highlight">{{ (html_line or '&nbsp;') | safe }}</div>
+                    </td>
+                    <td class="annotation-margin">{% if lnum in line_annotations %}<div class="comment-bubble">{{
+                            line_annotations[lnum] | safe }}</div>{% endif %}</td>
+                </tr>
+                {%- endfor %}
+            </table>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Line Editor Modal -->
+    <div id="line-editor-modal"
+        style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:white; padding:20px; border:1px solid #ccc; box-shadow:0 4px 12px rgba(0,0,0,0.2); z-index:100; width:500px; border-radius:8px;">
+        <h3 style="margin-top:0;">Annotate Line <span id="modal-line-num"></span></h3>
+        <textarea id="line-editor-parsed"
+            style="width:100%; height:150px; font-family:monospace; margin-bottom:10px; padding:5px;"></textarea>
+        <div style="text-align:right;">
+            <button onclick="saveLineAnnotation()"
+                style="background:#0066cc; color:white; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">Save</button>
+            <button onclick="closeLineEditor()"
+                style="background:#ccc; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; margin-left:10px;">Cancel</button>
+        </div>
+    </div>
+    <div id="modal-overlay" onclick="closeLineEditor()"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.3); z-index:90;">
+    </div>
+
+    <script>
+        const filePath = "{{ file_path }}";
+        const lineAnnotationsRaw = {{ lines_raw | tojson }};
+        let currentEditingLine = 0;
+
+        function openLineEditor(e, lineNum) {
+            // 1. Don't open if user is selecting text
+            if (window.getSelection().toString().length > 0) return;
+
+            // 2. Don't open if clicking directly on code text (unless it's the line number cell)
+            // The user wants to be able to copy code without the modal popping up.
+            // We check if the target is within .code-text
+            if (e.target.closest('.code-text')) {
+                return;
+            }
+
+            currentEditingLine = lineNum;
+            document.getElementById('modal-line-num').textContent = lineNum;
+            document.getElementById('line-editor-parsed').value = lineAnnotationsRaw[lineNum] || "";
+            document.getElementById('line-editor-modal').style.display = 'block';
+            document.getElementById('modal-overlay').style.display = 'block';
+            document.getElementById('line-editor-parsed').focus();
+        }
+
+        function closeLineEditor() {
+            document.getElementById('line-editor-modal').style.display = 'none';
+            document.getElementById('modal-overlay').style.display = 'none';
+        }
+
+        async function saveLineAnnotation() {
+            const content = document.getElementById('line-editor-parsed').value;
+            try {
+                const res = await fetch('/api/annotate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        file_path: filePath,
+                        line: currentEditingLine,
+                        content: content,
+                        type: 'manual'
+                    })
+                });
+                if (!res.ok) throw new Error("Save failed");
+                window.location.reload();
+            } catch (e) {
+                alert("Error: " + e.message);
+            }
+        }
+
+        function toggleEditor() {
+            const container = document.getElementById('editor-container');
+            const btn = document.getElementById('edit-btn');
+            if (container.style.display === 'block') {
+                container.style.display = 'none';
+                btn.textContent = 'Edit Annotations';
+            } else {
+                container.style.display = 'block';
+                btn.textContent = 'Close Editor';
+                document.getElementById('master-editor').focus();
+            }
+        }
+
+        async function saveAnnotations() {
+            const content = document.getElementById('master-editor').value;
+            try {
+                const res = await fetch('/api/annotate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        file_path: filePath,
+                        line: 0,
+                        content: content,
+                        type: 'manual'
+                    })
+                });
+                if (!res.ok) throw new Error("Save failed");
+                window.location.reload();
+            } catch (e) {
+                alert("Error: " + e.message);
+            }
+        }
+
+        function runTool(toolKey) {
+            const outputDiv = document.getElementById('tool-output');
+            outputDiv.style.display = 'block';
+            outputDiv.textContent = 'Running...';
+
+            fetch('/api/run_tool', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    tool: toolKey,
+                    file_path: filePath
+                })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        outputDiv.textContent = "Error: " + data.error;
+                        outputDiv.style.color = 'red';
+                    } else {
+                        outputDiv.textContent = data.output;
+                        outputDiv.style.color = '#0f0';
+
+                        if (toolKey.startsWith('auto_translate') || toolKey === 'format_code') {
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 1500);
+                        }
+                    }
+                })
+                .catch(err => {
+                    outputDiv.textContent = "Request Failed: " + err;
+                    outputDiv.style.color = 'red';
+                });
+        }
+
+        function copyLink(e, lnum) {
+            e.stopPropagation(); // Prevent row click
+            const url = window.location.origin + window.location.pathname + '#L' + lnum;
+            navigator.clipboard.writeText(url).then(() => {
+                history.pushState(null, null, '#L' + lnum);
+                highlightLine(lnum);
+            });
+        }
+
+        function highlightLine(lnum) {
+            // Remove old
+            document.querySelectorAll('.info-target').forEach(el => el.classList.remove('info-target'));
+
+            const row = document.getElementById('L' + lnum);
+            if (row) {
+                row.classList.add('info-target');
+                row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+
+        // Handle hash on load
+        window.addEventListener('load', () => {
+            const hash = window.location.hash;
+            if (hash && hash.startsWith('#L')) {
+                const lnum = hash.substring(2);
+                setTimeout(() => highlightLine(lnum), 100);
+            }
+        });
+
+        // Handle hash change
+        window.addEventListener('hashchange', () => {
+            const hash = window.location.hash;
+            if (hash && hash.startsWith('#L')) {
+                const lnum = hash.substring(2);
+                highlightLine(lnum);
+            }
+        });
+    </script>
+
+</body>
+
+</html>
